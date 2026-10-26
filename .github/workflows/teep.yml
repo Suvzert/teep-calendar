@@ -1,0 +1,71 @@
+name: Update TEEP
+
+on:
+  workflow_dispatch:
+    inputs:
+      week_start:
+        description: "Monday date (YYYY-MM-DD). Leave blank for automatic."
+        required: false
+        type: string
+      request_id:
+        description: "Request identifier supplied by BotGhost."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: teep-publish
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Download project files
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install image library
+        run: python -m pip install -r requirements.txt
+
+      - name: Generate calendar image
+        env:
+          TEAMUP_API_KEY: ${{ secrets.TEAMUP_API_KEY }}
+          TEAMUP_CALENDAR_KEY: ${{ secrets.TEAMUP_CALENDAR_KEY }}
+          WEEK_START: ${{ inputs.week_start }}
+          REQUEST_ID: ${{ inputs.request_id }}
+          BUILD_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: python generate_teep.py
+
+      - name: Upload generated website files
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Publish calendar
+        id: deployment
+        uses: actions/deploy-pages@v4
